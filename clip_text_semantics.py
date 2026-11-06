@@ -128,8 +128,6 @@ class RemoteCLIP(nn.Module):
                 f"Unsupported checkpoint format from {checkpoint_path}. "
                 f"Expected a state_dict-like dict, got {type(ckpt)}"
             )
-
-        # 去掉常见前缀
         new_ckpt = {}
         for k, v in ckpt.items():
             new_key = k
