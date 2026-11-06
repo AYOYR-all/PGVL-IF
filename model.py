@@ -512,4 +512,3 @@ class MMFNet(nn.Module):  # b,1,320,320 -
         seg_res = self.seghead(query_seg)
         fus = self.decoder(query_fus)
         return recon_ir, recon_rgb, recon_dec_ir, recon_dec_rgb, seg_res, fus
-# Freef
