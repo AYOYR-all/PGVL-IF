@@ -9,7 +9,6 @@ import numpy as np
 import kornia
 from text_semantics import CLIPSemanticGuide
 
-
 class BasicConv(nn.Module): 
     def __init__(self, in_channel, out_channel, kernel_size, stride, bias=True, norm=False, relu=True, transpose=False):
         super(BasicConv, self).__init__()
@@ -361,57 +360,7 @@ class SelfAttention(nn.Module):
         out = self.out_proj(out)
 
         return out
-
-class CrossTaskModule(nn.Module): 
-    def __init__(self, in_channels,high=32, width=32):
-        super(CrossTaskModule, self).__init__()
-        # avgpool
-        self.in_channels = in_channels
-        self.h = 8
-        self.high = high
-        self.width = width
-        self.avgpool = nn.AdaptiveAvgPool2d((self.high, self.width))
-        self.ln_input = nn.LayerNorm(in_channels)
-        self.ln_output = nn.LayerNorm(in_channels)
-        self.bn1 = nn.BatchNorm2d(self.in_channels)
-        self.bn2 = nn.BatchNorm2d(self.in_channels)
-        self.sa = SelfAttention(self.in_channels, self.h)
-        self.mlp1 = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, in_channels, kernel_size=1)
-        )
-        self.mlp2 = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(in_channels, in_channels, kernel_size=1)
-        )
-    def forward(self, fus, seg):
-        B, C, H, W = fus.shape
-        # AvgPooling for reduce the dimension due to expensive computation
-        fus_fea = self.avgpool(fus)  # 20 20
-        seg_fea = self.avgpool(seg)  # 20 20
-        fus_fea = self.bn1(fus_fea)
-        seg_fea = self.bn2(seg_fea)
-        fus_flat = fus_fea.view(B, C, -1)  # flatten the feature
-        seg_flat = seg_fea.view(B, C, -1)  # flatten the feature
-
-        mt_flat = torch.cat((fus_flat, seg_flat), dim=2)
-
-        mt_flat = mt_flat.permute(0, 2, 1) #B 2n c
-        mt_flat = self.sa(mt_flat)  #B 2n c
-        mt_flat = self.ln_output(mt_flat)  # B 2n c
-
-        mt_flat = mt_flat.view(B, 2, self.high, self.width, self.in_channels)
-        mt = mt_flat.permute(0, 1, 4, 2, 3)  # dim:(B, 2, C, H, W)
-        fus_out = mt[:, 0, :, :, :].contiguous().view(B, self.in_channels, self.high, self.width)
-        seg_out = mt[:, 1, :, :, :].contiguous().view(B, self.in_channels, self.high, self.width)
-
-        fus_res = self.mlp1(fus_out)
-        seg_res = self.mlp2(seg_out)
-
-        return fus_res, seg_res
-
+        
 class CrossAttention(nn.Module):
 
     def __init__(self, in_channels, h):
@@ -474,33 +423,6 @@ class ResidualRefineModule(nn.Module):
     def forward(self, ctf, st):
         _ = ctf
         return st + self.res_conv(st)
-
-class CTQModule(nn.Module):
-    def __init__(self, in_channels, high=32, width=32):
-        super(CTQModule, self).__init__()
-        self.in_channels = in_channels
-        self.h = 8
-        self.high = high
-        self.width = width
-        self.avgpool = nn.AdaptiveAvgPool2d((self.high, self.width))
-        self.ln_output = nn.LayerNorm(self.in_channels)
-        self.cs = CrossAttention(self.in_channels, self.h)
-
-    def forward(self, ctf, st):
-        B, C, H, W = st.shape
-        ctf_fea = ctf
-        st_fea = self.avgpool(st)
-
-        ctf_flat = ctf_fea.view(B, C, -1).permute(0, 2, 1)
-        st_flat = st_fea.view(B, C, -1).permute(0, 2, 1)
-
-        query_out = self.cs(ctf_flat, st_flat)
-        query_out = self.ln_output(query_out)
-        query_out = query_out.permute(0, 2, 1).contiguous().view(B, C, self.high, self.width)
-
-        query_out = F.interpolate(query_out, size=([H, W]), mode='bilinear')
-        query_res = st + query_out
-        return query_res
 
 class MMFNet(nn.Module):  # b,1,320,320 -
     def __init__(self, num_classes, use_clip_guidance=True, clip_model_name="ViT-B-32", clip_checkpoint_path='./check/RemoteCLIP-ViT-B-32.pt', clip_adapter_bottleneck_dim=64):
